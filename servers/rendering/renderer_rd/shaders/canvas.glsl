@@ -608,12 +608,14 @@ void main() {
 #ifdef LIGHT_CODE_USED
 
 		vec4 shadow_modulate = vec4(1.0);
-		light_color = light_compute(light_vertex, vec3(direction, light_array.data[light_base].height), normal, light_color, light_color.a, specular_shininess, shadow_modulate, screen_uv, uv, color, true);
+		light_color = light_compute(light_vertex, vec3(direction, light_array.data[light_base].height), normal, light_color, light_color.a, specular_shininess, shadow_modulate, screen_uv, uv, base_color, true);
 #else
 
 		if (normal_used) {
 			vec3 light_vec = normalize(mix(vec3(direction, 0.0), vec3(0, 0, 1), light_array.data[light_base].height));
 			light_color.rgb = light_normal_compute(light_vec, normal, base_color, light_color.rgb, specular_shininess, specular_shininess_used);
+		} else {
+			light_color.rgb *= base_color;
 		}
 #endif
 
@@ -667,10 +669,11 @@ void main() {
 		vec3 light_position = vec3(light_array.data[light_base].position, light_array.data[light_base].height);
 
 		light_color.rgb *= light_base_color.rgb;
-		light_color = light_compute(light_vertex, light_position, normal, light_color, light_base_color.a, specular_shininess, shadow_modulate, screen_uv, uv, color, false);
+		light_color = light_compute(light_vertex, light_position, normal, light_color, light_base_color.a, specular_shininess, shadow_modulate, screen_uv, uv, base_color, false);
 #else
 
-		light_color.rgb *= light_base_color.rgb * light_base_color.a;
+		light_color.rgb *= light_base_color.rgb;
+		light_color *= light_base_color.a;
 
 		if (normal_used) {
 			vec3 light_pos = vec3(light_array.data[light_base].position, light_array.data[light_base].height);
@@ -679,6 +682,8 @@ void main() {
 			float cNdotL = max(0.0, dot(normal, light_vec));
 
 			light_color.rgb = light_normal_compute(light_vec, normal, base_color, light_color.rgb, specular_shininess, specular_shininess_used);
+		} else {
+			light_color.rgb *= base_color;
 		}
 #endif
 		if (any(lessThan(tex_uv, vec2(0.0, 0.0))) || any(greaterThanEqual(tex_uv, vec2(1.0, 1.0)))) {
