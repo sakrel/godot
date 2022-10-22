@@ -1598,6 +1598,7 @@ Error VulkanContext::_window_create(DisplayServer::WindowID p_window_id, Display
 }
 
 void VulkanContext::window_resize(DisplayServer::WindowID p_window, int p_width, int p_height) {
+	_THREAD_SAFE_METHOD_
 	ERR_FAIL_COND(!windows.has(p_window));
 	windows[p_window].width = p_width;
 	windows[p_window].height = p_height;
@@ -1605,22 +1606,26 @@ void VulkanContext::window_resize(DisplayServer::WindowID p_window, int p_width,
 }
 
 int VulkanContext::window_get_width(DisplayServer::WindowID p_window) {
+	_THREAD_SAFE_METHOD_
 	ERR_FAIL_COND_V(!windows.has(p_window), -1);
 	return windows[p_window].width;
 }
 
 int VulkanContext::window_get_height(DisplayServer::WindowID p_window) {
+	_THREAD_SAFE_METHOD_
 	ERR_FAIL_COND_V(!windows.has(p_window), -1);
 	return windows[p_window].height;
 }
 
 bool VulkanContext::window_is_valid_swapchain(DisplayServer::WindowID p_window) {
+	_THREAD_SAFE_METHOD_
 	ERR_FAIL_COND_V(!windows.has(p_window), false);
 	Window *w = &windows[p_window];
 	return w->swapchain_image_resources != VK_NULL_HANDLE;
 }
 
 VkRenderPass VulkanContext::window_get_render_pass(DisplayServer::WindowID p_window) {
+	_THREAD_SAFE_METHOD_
 	ERR_FAIL_COND_V(!windows.has(p_window), VK_NULL_HANDLE);
 	Window *w = &windows[p_window];
 	// Vulkan use of currentbuffer.
@@ -1628,6 +1633,7 @@ VkRenderPass VulkanContext::window_get_render_pass(DisplayServer::WindowID p_win
 }
 
 VkFramebuffer VulkanContext::window_get_framebuffer(DisplayServer::WindowID p_window) {
+	_THREAD_SAFE_METHOD_
 	ERR_FAIL_COND_V(!windows.has(p_window), VK_NULL_HANDLE);
 	ERR_FAIL_COND_V(!buffers_prepared, VK_NULL_HANDLE);
 	Window *w = &windows[p_window];
@@ -1640,6 +1646,7 @@ VkFramebuffer VulkanContext::window_get_framebuffer(DisplayServer::WindowID p_wi
 }
 
 void VulkanContext::window_destroy(DisplayServer::WindowID p_window_id) {
+	_THREAD_SAFE_METHOD_
 	ERR_FAIL_COND(!windows.has(p_window_id));
 	_clean_up_swap_chain(&windows[p_window_id]);
 	for (uint32_t i = 0; i < FRAME_LAG; i++) {
@@ -2124,6 +2131,7 @@ void VulkanContext::flush(bool p_flush_setup, bool p_flush_pending) {
 }
 
 Error VulkanContext::prepare_buffers() {
+	_THREAD_SAFE_METHOD_
 	if (!queues_initialized) {
 		return OK;
 	}
@@ -2174,6 +2182,7 @@ Error VulkanContext::prepare_buffers() {
 }
 
 Error VulkanContext::swap_buffers() {
+	_THREAD_SAFE_METHOD_
 	if (!queues_initialized) {
 		return OK;
 	}

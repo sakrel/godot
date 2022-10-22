@@ -48,6 +48,7 @@
 #include "vulkan_hooks.h"
 
 class VulkanContext {
+	_THREAD_SAFE_CLASS_
 public:
 	struct SubgroupCapabilities {
 		uint32_t size;
