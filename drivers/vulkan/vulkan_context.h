@@ -93,6 +93,11 @@ public:
 		bool storage_input_output_16;
 	};
 
+	struct DeviceFaultCapabilities {
+		bool device_fault_is_supported;
+		bool device_fault_vendor_binary_is_supported;
+	};
+
 private:
 	enum {
 		MAX_EXTENSIONS = 128,
@@ -116,6 +121,7 @@ private:
 	VRSCapabilities vrs_capabilities;
 	ShaderCapabilities shader_capabilities;
 	StorageBufferCapabilities storage_buffer_capabilities;
+	DeviceFaultCapabilities device_fault_capabilities;
 
 	String device_vendor;
 	String device_name;
@@ -256,6 +262,8 @@ private:
 	Error _create_semaphores();
 
 	Vector<VkAttachmentReference> _convert_VkAttachmentReference2(uint32_t p_count, const VkAttachmentReference2 *p_refs);
+
+	void _print_device_fault_info();
 
 protected:
 	virtual const char *_get_platform_surface_extension() const = 0;

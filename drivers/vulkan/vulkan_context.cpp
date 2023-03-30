@@ -32,6 +32,7 @@
 
 #include "core/config/engine.h"
 #include "core/config/project_settings.h"
+#include "core/os/time.h"
 #include "core/string/ustring.h"
 #include "core/templates/local_vector.h"
 #include "core/version.h"
@@ -504,6 +505,10 @@ Error VulkanContext::_initialize_device_extensions() {
 	register_requested_device_extension(VK_KHR_IMAGE_FORMAT_LIST_EXTENSION_NAME, false);
 	register_requested_device_extension(VK_KHR_MAINTENANCE_2_EXTENSION_NAME, false);
 
+	if (is_instance_extension_enabled(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME)) {
+		register_requested_device_extension(VK_EXT_DEVICE_FAULT_EXTENSION_NAME, false);
+	}
+
 	// TODO consider the following extensions:
 	// - VK_KHR_spirv_1_4
 	// - VK_KHR_swapchain_mutable_format
@@ -743,6 +748,8 @@ Error VulkanContext::_check_capabilities() {
 	storage_buffer_capabilities.uniform_and_storage_buffer_16_bit_access_is_supported = false;
 	storage_buffer_capabilities.storage_push_constant_16_is_supported = false;
 	storage_buffer_capabilities.storage_input_output_16 = false;
+	device_fault_capabilities.device_fault_is_supported = false;
+	device_fault_capabilities.device_fault_vendor_binary_is_supported = false;
 
 	if (is_instance_extension_enabled(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME)) {
 		// Check for extended features.
@@ -764,6 +771,7 @@ Error VulkanContext::_check_capabilities() {
 			VkPhysicalDeviceFragmentShadingRateFeaturesKHR vrs_features = {};
 			VkPhysicalDevice16BitStorageFeaturesKHR storage_feature = {};
 			VkPhysicalDeviceMultiviewFeatures multiview_features = {};
+			VkPhysicalDeviceFaultFeaturesEXT device_fault_features = {};
 
 			if (device_api_version >= VK_API_VERSION_1_2) {
 				device_features_vk12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
@@ -815,6 +823,16 @@ Error VulkanContext::_check_capabilities() {
 				next = &multiview_features;
 			}
 
+			if (is_device_extension_enabled(VK_EXT_DEVICE_FAULT_EXTENSION_NAME)) {
+				device_fault_features = {
+					/*sType*/ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FAULT_FEATURES_EXT,
+					/*pNext*/ next,
+					/*deviceFault*/ false,
+					/*deviceFaultVendorBinary*/ false,
+				};
+				next = &device_fault_features;
+			}
+
 			VkPhysicalDeviceFeatures2 device_features;
 			device_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
 			device_features.pNext = next;
@@ -854,6 +872,11 @@ Error VulkanContext::_check_capabilities() {
 				storage_buffer_capabilities.uniform_and_storage_buffer_16_bit_access_is_supported = storage_feature.uniformAndStorageBuffer16BitAccess;
 				storage_buffer_capabilities.storage_push_constant_16_is_supported = storage_feature.storagePushConstant16;
 				storage_buffer_capabilities.storage_input_output_16 = storage_feature.storageInputOutput16;
+			}
+
+			if (is_device_extension_enabled(VK_EXT_DEVICE_FAULT_EXTENSION_NAME)) {
+				device_fault_capabilities.device_fault_is_supported = device_fault_features.deviceFault;
+				device_fault_capabilities.device_fault_vendor_binary_is_supported = device_fault_features.deviceFaultVendorBinary;
 			}
 		}
 
@@ -1438,6 +1461,16 @@ Error VulkanContext::_create_device() {
 		}
 	}
 
+	VkPhysicalDeviceFaultFeaturesEXT device_fault_features = {};
+	if (device_fault_capabilities.device_fault_is_supported) {
+		device_fault_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FAULT_FEATURES_EXT;
+		device_fault_features.pNext = nextptr;
+		device_fault_features.deviceFault = device_fault_capabilities.device_fault_is_supported;
+		device_fault_features.deviceFaultVendorBinary = device_fault_capabilities.device_fault_vendor_binary_is_supported;
+
+		nextptr = &device_fault_features;
+	}
+
 	uint32_t enabled_extension_count = 0;
 	const char *enabled_extension_names[MAX_EXTENSIONS];
 	ERR_FAIL_COND_V(enabled_device_extension_names.size() > MAX_EXTENSIONS, ERR_CANT_CREATE);
@@ -1653,6 +1686,74 @@ Error VulkanContext::_create_semaphores() {
 
 bool VulkanContext::_use_validation_layers() {
 	return Engine::get_singleton()->is_validation_layers_enabled();
+}
+
+void VulkanContext::_print_device_fault_info() {
+	if (!device_fault_capabilities.device_fault_is_supported) {
+		print_line("Vulkan device fault info is not supported.");
+		return;
+	}
+
+	PFN_vkGetDeviceFaultInfoEXT _vkGetDeviceFaultInfoEXT = (PFN_vkGetDeviceFaultInfoEXT)vkGetInstanceProcAddr(inst, "vkGetDeviceFaultInfoEXT");
+
+	print_line("######################## DEVICE FAULT INFO ########################");
+
+	VkDeviceFaultCountsEXT fault_counts = {};
+	fault_counts.sType = VK_STRUCTURE_TYPE_DEVICE_FAULT_COUNTS_EXT;
+
+	VkResult fault_info_err = _vkGetDeviceFaultInfoEXT(device, &fault_counts, nullptr);
+	if (!fault_info_err) {
+		print_line("pFaultCounts.addressInfoCount = " + itos(fault_counts.addressInfoCount));
+		print_line("pFaultCounts.vendorInfoCount  = " + itos(fault_counts.vendorInfoCount));
+		print_line("pFaultCounts.vendorBinarySize = " + itos(fault_counts.vendorBinarySize));
+
+		VkDeviceFaultInfoEXT fault_info = {};
+		fault_info.sType = VK_STRUCTURE_TYPE_DEVICE_FAULT_INFO_EXT;
+		fault_info.pAddressInfos = fault_counts.addressInfoCount ? (VkDeviceFaultAddressInfoEXT *)malloc(sizeof(VkDeviceFaultAddressInfoEXT) * fault_counts.addressInfoCount) : nullptr;
+		fault_info.pVendorInfos = fault_counts.vendorInfoCount ? (VkDeviceFaultVendorInfoEXT *)malloc(sizeof(VkDeviceFaultVendorInfoEXT) * fault_counts.vendorInfoCount) : nullptr;
+		fault_info.pVendorBinaryData = fault_counts.vendorBinarySize ? malloc(fault_counts.vendorBinarySize) : nullptr;
+
+		fault_info_err = _vkGetDeviceFaultInfoEXT(device, &fault_counts, &fault_info);
+
+		if (!fault_info_err) {
+			print_line("pFaultInfo.description = " + String(fault_info.description));
+
+			for (uint32_t i = 0; i < fault_counts.addressInfoCount; i++) {
+				VkDeviceFaultAddressInfoEXT &address_info = fault_info.pAddressInfos[i];
+				print_line("pAddressInfos[" + itos(i) + "].addressType = " + itos(address_info.addressType));
+				print_line("pAddressInfos[" + itos(i) + "].reportedAddress = 0x" + String::num_int64(address_info.reportedAddress, 16, true));
+				print_line("pAddressInfos[" + itos(i) + "].addressPrecision = 0x" + String::num_int64(address_info.addressPrecision, 16, true));
+			}
+
+			for (uint32_t i = 0; i < fault_counts.vendorInfoCount; i++) {
+				VkDeviceFaultVendorInfoEXT &vendor_info = fault_info.pVendorInfos[i];
+				print_line("pVendorInfos[" + itos(i) + "].description = " + String(vendor_info.description));
+				print_line("pVendorInfos[" + itos(i) + "].vendorFaultCode = " + itos(vendor_info.vendorFaultCode));
+				print_line("pVendorInfos[" + itos(i) + "].vendorFaultData = " + itos(vendor_info.vendorFaultData));
+			}
+
+			if (fault_counts.vendorBinarySize) {
+				String timestamp = Time::get_singleton()->get_datetime_string_from_system().replace(":", ".");
+				String path = "vendor_binary_crash_dump_" + timestamp + ".bin";
+				Ref<FileAccess> f = FileAccess::open(path, FileAccess::WRITE);
+				if (f.is_valid()) {
+					f->store_buffer((const uint8_t *)fault_info.pVendorBinaryData, fault_counts.vendorBinarySize);
+					print_line("Vendor Binary Crash Dump = " + path);
+				} else {
+					print_error("Failed to write Vendor Binary Crash Dump: " + path);
+				}
+			}
+		} else {
+			print_error("Vulkan: vkGetDeviceFaultInfoEXT returned error code: " + String(string_VkResult(fault_info_err)));
+		}
+
+		free(fault_info.pAddressInfos);
+		free(fault_info.pVendorInfos);
+		free(fault_info.pVendorBinaryData);
+
+	} else {
+		print_error("Vulkan: vkGetDeviceFaultInfoEXT returned error code: " + String(string_VkResult(fault_info_err)));
+	}
 }
 
 VkExtent2D VulkanContext::_compute_swapchain_extent(const VkSurfaceCapabilitiesKHR &p_surf_capabilities, int *p_window_width, int *p_window_height) const {
@@ -2277,6 +2378,9 @@ Error VulkanContext::prepare_buffers() {
 				print_verbose("Vulkan: Early suboptimal swapchain.");
 				break;
 			} else if (err != VK_SUCCESS) {
+				if (err == VK_ERROR_DEVICE_LOST) {
+					_print_device_fault_info();
+				}
 				ERR_BREAK_MSG(err != VK_SUCCESS, "Vulkan: Did not create swapchain successfully. Error code: " + String(string_VkResult(err)));
 			} else {
 				w->semaphore_acquired = true;
@@ -2354,6 +2458,11 @@ Error VulkanContext::swap_buffers() {
 	submit_info.signalSemaphoreCount = 1;
 	submit_info.pSignalSemaphores = &draw_complete_semaphores[frame_index];
 	err = vkQueueSubmit(graphics_queue, 1, &submit_info, fences[frame_index]);
+
+	if (err == VK_ERROR_DEVICE_LOST) {
+		_print_device_fault_info();
+	}
+
 	ERR_FAIL_COND_V_MSG(err, ERR_CANT_CREATE, "Vulkan: Cannot submit graphics queue. Error code: " + String(string_VkResult(err)));
 
 	command_buffer_queue.write[0] = nullptr;
