@@ -2180,6 +2180,7 @@ Error VulkanContext::initialize() {
 
 void VulkanContext::set_setup_buffer(VkCommandBuffer p_command_buffer) {
 	command_buffer_queue.write[0] = p_command_buffer;
+	set_object_name(VK_OBJECT_TYPE_COMMAND_BUFFER, uint64_t(p_command_buffer), "Setup Command Buffer");
 }
 
 void VulkanContext::append_command_buffer(VkCommandBuffer p_command_buffer) {
@@ -2189,6 +2190,7 @@ void VulkanContext::append_command_buffer(VkCommandBuffer p_command_buffer) {
 
 	command_buffer_queue.write[command_buffer_count] = p_command_buffer;
 	command_buffer_count++;
+	set_object_name(VK_OBJECT_TYPE_COMMAND_BUFFER, uint64_t(p_command_buffer), "Draw Command Buffer");
 }
 
 void VulkanContext::flush(bool p_flush_setup, bool p_flush_pending) {

@@ -5930,10 +5930,22 @@ Vector<uint8_t> RenderingDeviceVulkan::buffer_get_data(RID p_buffer, uint32_t p_
 		ERR_FAIL_V_MSG(Vector<uint8_t>(), "Buffer is either invalid or this type of buffer can't be retrieved. Only Index and Vertex buffers allow retrieving.");
 	}
 
-	// Make sure no one is using the buffer -- the "false" gets us to the same command buffer as below.
-	_buffer_memory_barrier(buffer->buffer, 0, buffer->size, src_stage_mask, VK_PIPELINE_STAGE_TRANSFER_BIT, src_access_mask, VK_ACCESS_TRANSFER_READ_BIT, false);
+	VkCommandBuffer command_buffer = frames[frame].draw_command_buffer;
 
-	VkCommandBuffer command_buffer = frames[frame].setup_command_buffer;
+
+	VkDebugUtilsLabelEXT label;
+	label.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT;
+	label.pNext = nullptr;
+	label.pLabelName = "RenderingDeviceVulkan::buffer_get_data()";
+	label.color[0] = 1.0f;
+	label.color[1] = 0.0f;
+	label.color[2] = 0.0f;
+	label.color[3] = 1.0f;
+	vkCmdBeginDebugUtilsLabelEXT(command_buffer, &label);
+	// Make sure no one is using the buffer -- the "false" gets us to the same command buffer as below.
+	_buffer_memory_barrier(buffer->buffer, 0, buffer->size, src_stage_mask, VK_PIPELINE_STAGE_TRANSFER_BIT, src_access_mask, VK_ACCESS_TRANSFER_READ_BIT, true);
+
+	
 
 	// Size of buffer to retrieve.
 	if (!p_size) {
@@ -5950,8 +5962,15 @@ Vector<uint8_t> RenderingDeviceVulkan::buffer_get_data(RID p_buffer, uint32_t p_
 	region.dstOffset = 0;
 	region.size = p_size;
 	vkCmdCopyBuffer(command_buffer, buffer->buffer, tmp_buffer.buffer, 1, &region); // Dst buffer is in CPU, but I wonder if src buffer needs a barrier for this.
+
+	label.pLabelName = "_flush(true)";
+	label.color[0] = 0.0f;
+	label.color[1] = 1.0f;
+	vkCmdInsertDebugUtilsLabelEXT(command_buffer, &label);
 	// Flush everything so memory can be safely mapped.
+	vkCmdEndDebugUtilsLabelEXT(command_buffer);
 	_flush(true);
+
 
 	void *buffer_mem;
 	VkResult vkerr = vmaMapMemory(allocator, tmp_buffer.allocation, &buffer_mem);
